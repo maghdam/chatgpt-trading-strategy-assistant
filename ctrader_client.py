@@ -221,48 +221,52 @@ def place_order(
     price=None, stop_loss=None, take_profit=None,
     client_msg_id=None,
 ):
-    # 1 lot  →  10 000 000 units   (✅ correct scale)
+    # ✅ Convert lots to cTrader native units (1 lot = 100,000 for Forex)
+    if volume < 1000:  # Assume input is in lots
+        volume_units = int(volume * 100_000)  # 0.01 lots → 1,000 units
+    else:  # Assume already in units
+        volume_units = int(volume)
+
     req = ProtoOANewOrderReq(
         ctidTraderAccountId=account_id,
         symbolId=symbol_id,
         orderType=ProtoOAOrderType.Value(order_type.upper()),
         tradeSide=ProtoOATradeSide.Value(side.upper()),
-        volume=int(volume),  # ✅ FIXED: Pass native volume units directly
+        volume=volume_units,
     )
 
-
-    # -------- absolute price fields are now plain floats ------------------
+    # -------- Absolute prices for all order types ------------------
     if order_type.upper() == "LIMIT":
         if price is None:
             raise ValueError("Limit order requires price.")
-        req.limitPrice = float(price)          # e.g. 1.17700
+        req.limitPrice = float(price)
     elif order_type.upper() == "STOP":
         if price is None:
             raise ValueError("Stop order requires price.")
         req.stopPrice = float(price)
 
+    # LIMIT / STOP use absolute SL/TP
     if order_type.upper() in ("LIMIT", "STOP"):
-        if stop_loss   is not None:
-            req.stopLoss   = float(stop_loss)
+        if stop_loss is not None:
+            req.stopLoss = float(stop_loss)
         if take_profit is not None:
             req.takeProfit = float(take_profit)
-    # ---------------------------------------------------------------------
 
-    # MARKET orders → relative distances (still 1 / 100 000 units)
-    else:
-        digits = symbol_digits_map.get(symbol_id, 5)
+    # MARKET uses absolute SL/TP as well
+    elif order_type.upper() == "MARKET":
         if stop_loss is not None:
-            req.relativeStopLoss   = pips_to_relative(int(stop_loss),   digits)
+            req.stopLoss = float(stop_loss)
         if take_profit is not None:
-            req.relativeTakeProfit = pips_to_relative(int(take_profit), digits)
+            req.takeProfit = float(take_profit)
+        print(f"[DEBUG] MARKET absolute prices: SL={stop_loss}, TP={take_profit}")
 
     print(
         f"[DEBUG] Sending order: {order_type=} {side=} "
-        f"price={price} SL={stop_loss} TP={take_profit}"
+        f"volume_units={volume_units} price={price} SL={stop_loss} TP={take_profit}"
     )
     d = client.send(req, client_msg_id=client_msg_id, timeout=12)
 
-    # legacy patch after MARKET fill (unchanged)
+    # MARKET: delay SL/TP amendment after fill
     if order_type.upper() == "MARKET":
         def _delayed_sltp(_):
             time.sleep(8)
@@ -282,8 +286,8 @@ def place_order(
             return {"status": "position_not_found"}
         d.addCallback(_delayed_sltp)
 
-
     return d
+
 
 
 
