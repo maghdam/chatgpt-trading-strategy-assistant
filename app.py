@@ -264,12 +264,9 @@ def execute_trade(order: PlaceOrderRequest):
         symbol_id = symbol_name_to_id[symbol_key]
 
         print(f"[ORDER DEBUG] Sending order: {order=}, {symbol_id=}")
-        
-        # 🔄 Normalize volume
-        # 🔄 Normalize volume
-        volume_raw = int(order.volume)  # assume raw units passed from frontend (e.g. 1 lot = 10_000_000 for Forex)
 
-
+        # ✅ Pass the volume exactly as sent (float) to preserve decimals
+        volume_raw = float(order.volume)
 
         # Submit order
         deferred = place_order(
@@ -278,13 +275,11 @@ def execute_trade(order: PlaceOrderRequest):
             symbol_id=symbol_id,
             order_type=order.order_type,
             side=order.direction,
-            volume=volume_raw,
+            volume=volume_raw,  # ✅ Keep as float, let place_order handle conversion
             price=order.entry_price,
             stop_loss=order.stop_loss,
             take_profit=order.take_profit
         )
-
-
 
         result = wait_for_deferred(deferred, timeout=12)
 
@@ -304,6 +299,7 @@ def execute_trade(order: PlaceOrderRequest):
     except Exception as e:
         print(f"[ERROR] Failed placing order: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.on_event("shutdown")
 async def stop_ctrader():
