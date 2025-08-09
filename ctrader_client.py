@@ -221,28 +221,34 @@ def place_order(
     price=None, stop_loss=None, take_profit=None,
     client_msg_id=None,
     max_units=10_000_000,  # broker limit safeguard
+    min_units=1000         # broker minimum safeguard
 ):
     """
     Safe order placement for cTrader.
     - Accepts `volume` in lots (e.g., 0.01) or units (e.g., 1000)
     - Auto-detects format and converts to cTrader native units
-    - Prevents oversize orders
+    - Prevents oversize/undersize orders
     """
 
-    # Auto-detect if volume is in lots or units
+    # Auto-detect format
     if volume < 1000:  # assume lots
-        volume_units = int(float(volume) * 10_000_000)
-        print(f"[SAFE VOLUME] Interpreted {volume} as lots -> {volume_units} units")
+        volume_units = int(round(float(volume) * 10_000_000))
+        print(f"[SAFE VOLUME] Interpreted {volume} as LOTS -> {volume_units} units")
     else:  # assume already in units
         volume_units = int(volume)
-        print(f"[SAFE VOLUME] Interpreted {volume} as units")
+        print(f"[SAFE VOLUME] Interpreted {volume} as UNITS")
 
-    # Safety check
+    # Safety range checks
     if volume_units > max_units:
         raise ValueError(
             f"Volume too large: {volume_units} units > broker max {max_units}"
         )
+    if volume_units < min_units:
+        raise ValueError(
+            f"Volume too small: {volume_units} units < broker min {min_units}"
+        )
 
+    # Create order request
     req = ProtoOANewOrderReq(
         ctidTraderAccountId=account_id,
         symbolId=symbol_id,
@@ -261,7 +267,7 @@ def place_order(
             raise ValueError("Stop order requires price.")
         req.stopPrice = float(price)
 
-    # Absolute SL/TP
+    # Set SL/TP
     if stop_loss is not None:
         req.stopLoss = float(stop_loss)
     if take_profit is not None:
@@ -272,8 +278,8 @@ def place_order(
         f"volume_units={volume_units} price={price} SL={stop_loss} TP={take_profit}"
     )
     d = client.send(req, client_msg_id=client_msg_id, timeout=12)
-
     return d
+
 
 
 
