@@ -220,9 +220,28 @@ def place_order(
     order_type, side, volume,
     price=None, stop_loss=None, take_profit=None,
     client_msg_id=None,
+    max_units=10_000_000,  # broker limit safeguard
 ):
-    # ✅ Convert lots to native units for cTrader (1 lot = 10M for Forex)
-    volume_units = int(float(volume) * 10_000_000)
+    """
+    Safe order placement for cTrader.
+    - Accepts `volume` in lots (e.g., 0.01) or units (e.g., 1000)
+    - Auto-detects format and converts to cTrader native units
+    - Prevents oversize orders
+    """
+
+    # Auto-detect if volume is in lots or units
+    if volume < 1000:  # assume lots
+        volume_units = int(float(volume) * 10_000_000)
+        print(f"[SAFE VOLUME] Interpreted {volume} as lots -> {volume_units} units")
+    else:  # assume already in units
+        volume_units = int(volume)
+        print(f"[SAFE VOLUME] Interpreted {volume} as units")
+
+    # Safety check
+    if volume_units > max_units:
+        raise ValueError(
+            f"Volume too large: {volume_units} units > broker max {max_units}"
+        )
 
     req = ProtoOANewOrderReq(
         ctidTraderAccountId=account_id,
@@ -232,7 +251,7 @@ def place_order(
         volume=volume_units,
     )
 
-    # -------- Absolute prices for all order types ------------------
+    # Set price for pending orders
     if order_type.upper() == "LIMIT":
         if price is None:
             raise ValueError("Limit order requires price.")
@@ -242,46 +261,17 @@ def place_order(
             raise ValueError("Stop order requires price.")
         req.stopPrice = float(price)
 
-    # LIMIT / STOP use absolute SL/TP
-    if order_type.upper() in ("LIMIT", "STOP"):
-        if stop_loss is not None:
-            req.stopLoss = float(stop_loss)
-        if take_profit is not None:
-            req.takeProfit = float(take_profit)
-
-    # MARKET uses absolute SL/TP as well
-    elif order_type.upper() == "MARKET":
-        if stop_loss is not None:
-            req.stopLoss = float(stop_loss)
-        if take_profit is not None:
-            req.takeProfit = float(take_profit)
-        print(f"[DEBUG] MARKET absolute prices: SL={stop_loss}, TP={take_profit}")
+    # Absolute SL/TP
+    if stop_loss is not None:
+        req.stopLoss = float(stop_loss)
+    if take_profit is not None:
+        req.takeProfit = float(take_profit)
 
     print(
         f"[DEBUG] Sending order: {order_type=} {side=} "
         f"volume_units={volume_units} price={price} SL={stop_loss} TP={take_profit}"
     )
     d = client.send(req, client_msg_id=client_msg_id, timeout=12)
-
-    # MARKET: delay SL/TP amendment after fill
-    if order_type.upper() == "MARKET":
-        def _delayed_sltp(_):
-            time.sleep(8)
-            open_pos = get_open_positions()
-            for p in open_pos:
-                if (
-                    p["symbol_name"].upper() == symbol_map[symbol_id].upper()
-                    and p["direction"].upper() == side.upper()
-                ):
-                    return modify_position_sltp(
-                        client=client,
-                        account_id=account_id,
-                        position_id=p["position_id"],
-                        stop_loss=stop_loss,
-                        take_profit=take_profit,
-                    )
-            return {"status": "position_not_found"}
-        d.addCallback(_delayed_sltp)
 
     return d
 
