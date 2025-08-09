@@ -230,9 +230,15 @@ def place_order(
     - Prevents oversize/undersize orders
     """
 
+    # ✅ Force float to prevent truncation of small lot sizes
+    try:
+        volume = float(volume)
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid volume: {volume}")
+
     # Auto-detect format
     if volume < 1000:  # assume lots
-        volume_units = int(round(float(volume) * 10_000_000))
+        volume_units = int(round(volume * 10_000_000))
         print(f"[SAFE VOLUME] Interpreted {volume} as LOTS -> {volume_units} units")
     else:  # assume already in units
         volume_units = int(volume)
@@ -279,7 +285,6 @@ def place_order(
     )
     d = client.send(req, client_msg_id=client_msg_id, timeout=12)
     return d
-
 
 
 
