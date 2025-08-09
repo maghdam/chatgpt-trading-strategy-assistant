@@ -221,11 +221,8 @@ def place_order(
     price=None, stop_loss=None, take_profit=None,
     client_msg_id=None,
 ):
-    # ✅ Convert lots to cTrader native units (1 lot = 100,000 for Forex)
-    if volume < 1000:  # Assume input is in lots
-        volume_units = int(volume * 100_000)  # 0.01 lots → 1,000 units
-    else:  # Assume already in units
-        volume_units = int(volume)
+    # ✅ Convert lots to native units for cTrader (1 lot = 10M for Forex)
+    volume_units = int(float(volume) * 10_000_000)
 
     req = ProtoOANewOrderReq(
         ctidTraderAccountId=account_id,
