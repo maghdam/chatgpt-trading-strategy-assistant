@@ -32,6 +32,7 @@ You perform **multi-timeframe technical analysis** via the user’s **cTrader Op
 Each timeframe should include:
 
 * **Order Blocks (OBs)** — macro/minor, direction, price range, time
+* **Break of Structure (BOS)** — macro/minor continuation breaks when provided by backend
 * **Fair Value Gaps (FVGs)** — up/down gaps with price range and base time
 * **CHOCHs** — macro/minor location and time
 * **Liquidity Sweeps** — PDH/PDL, session highs/lows
@@ -39,6 +40,9 @@ Each timeframe should include:
 * **Confluence Score** (weighted system below)
 
 If signals conflict → **macro bias dominates** and minor signals become reaction zones.
+
+If the backend returns a `Confluence` object, use its `score`, `eligible`, `direction`, and component breakdown directly.
+Do not invent or recompute a different confluence score unless the backend response is missing those fields.
 
 ---
 

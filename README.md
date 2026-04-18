@@ -1,471 +1,378 @@
-# 📊 ChatGPT Trading Strategy Assistant with cTrader API
+# ChatGPT Trading Strategy Assistant with cTrader API
 
-A fully automated and extensible trading assistant powered by ChatGPT — capable of analyzing, journaling, and executing trades in Forex, indices, and stocks using natural language.
+A ChatGPT-powered trading assistant backend for cTrader that can analyze markets, journal setups, and place trades through Custom GPT Actions.
 
-This framework integrates the **cTrader Open API**, a **FastAPI backend**, and **Docker**, delivering a seamless end-to-end trading pipeline — from market analysis to order placement — all controlled through conversation.
+The default implementation ships with a Smart Money Concepts (SMC) strategy, but the real point of the repo is broader:
 
-🧐 **Currently configured to run a Smart Money Concepts (SMC)** strategy out of the box.
-🛠️ You can easily adapt it to **any strategy** by modifying the ChatGPT instructions.
+- use ChatGPT as the trader-facing interface
+- use FastAPI as the action backend
+- use cTrader Open API as the market and execution layer
+- swap the strategy logic and GPT instructions for your own system
 
----
-
-## 🔑 Key Features
-
-* **Strategy-Agnostic Design**
-  Define your own rules — just update the ChatGPT prompt instructions, and the assistant adapts accordingly.
-
-* **Advanced SMC Market Analysis**
-  Detects CHOCH, BOS, FVGs, OBs, liquidity sweeps, and premium/discount zones.
-
-* **Trade Journaling**
-  Automatically logs trades to Notion with structured metadata, SMC checklists, and chart snapshots.
-
-* **Order Execution**
-  Places market, limit, and stop orders in real time using plain English.
-
-* **Multilingual Support**
-  Works in English, French, Spanish, and any language ChatGPT understands.
-
-* **Live Market Sync**
-  Fetches price data and executes logic live through the cTrader Open API.
+This repo is best understood as a reusable pattern for building strategy-specific trading assistants, not just a single SMC bot.
 
 ---
 
-## 🧹 Top-Down SMC Flow (Full Sequence)
+## Why This Repo Exists
 
-> ✅ The assistant follows strict Smart Money Concepts (SMC) methodology using a top-down flow:
-> **HTF (D1) → MTF (H4/H1) → LTF (M15/M5)** — all layers are analyzed in sequence for every setup.
+Most trading bot repos focus on one of these:
 
----
+- backtesting only
+- broker execution only
+- prompt experiments with no real broker integration
 
-## ✨ Trade Confluence Scoring System
+This project connects all three layers that people actually want:
 
-| Element               | Weight    |
-| --------------------- | --------- |
-| CHOCH                 | 25%       |
-| Order Block (OB)      | 20%       |
-| Fair Value Gap (FVG)  | 15%       |
-| Liquidity Sweep       | 20%       |
-| Candle Confirmation   | 20%       |
-| **Required to Enter** | **≥ 70%** |
+1. a ChatGPT Custom GPT with Actions
+2. a live market and execution backend
+3. strategy-specific analysis logic
 
----
+That makes it useful both as a working SMC prototype and as a template for other trading workflows such as:
 
-## 🛡️ Risk Management Filters
-
-The assistant will **skip** trade setups when any of the following are true:
-
-* 🔺 **ADR ≥ 90%**: Daily move exhausted
-* 🕐 **High-impact news** in next 30–60 minutes
-* 🔚 **End-of-day** (last 10% of ADR range)
-* 🔴 **Counter-trend** unless confluence ≥ 80%
+- breakout systems
+- trend-following systems
+- Fibonacci or indicator-based systems
+- session-based scalping
+- news-aware discretionary assistants
+- portfolio monitoring or journaling assistants
 
 ---
 
-## 📃 Journaling Logic
+## What It Does
 
-> 🧾 When a valid setup is found, the assistant auto-posts to `/journal-entry`, logging:
+- Fetches live OHLC data from cTrader Open API
+- Runs structured multi-timeframe analysis through `/analyze`
+- Returns machine-usable action payloads for ChatGPT
+- Places market, limit, and stop orders via `/place-order`
+- Lists open positions and pending orders
+- Logs setups to Notion through `/journal-entry`
+- Optionally renders price charts for the GPT or the user
 
-* Full metadata (symbol, session, entry, SL, TP, confluence score)
-* Checklist (CHOCH, OB, FVG, Sweep, Candle)
-* News and session context
-* Optional chart snapshot
+Current default strategy signals include:
 
----
-
-## 🖋️ Natural Language Prompts (Examples)
-
-| Prompt                            | Action Triggered               |
-| --------------------------------- | ------------------------------ |
-| Analyze EURUSD using SMC          | `/analyze` full structure scan |
-| What’s the HTF bias on NAS100?    | D1-only HTF analysis           |
-| Has NY session swept London high? | Liquidity mapping check        |
-| Reevaluate my GBPUSD long         | LTF/MTF revalidation           |
-| Place buy limit on EURUSD         | Places `/place-order` limit    |
-| Log this NAS100 trade             | Saves journal to Notion        |
+- CHOCH
+- BOS
+- order blocks
+- fair value gaps
+- session sweeps
+- candle confirmations
+- weighted confluence scoring
 
 ---
 
+## SMC By Default, Reusable As A Pattern
 
+This repo is intentionally built around Smart Money Concepts. The current:
+
+- [analysis.py](analysis.py)
+- [app.py](app.py)
+- [gpt_instructions.md](gpt_instructions.md)
+- [gpt-schema.yaml](gpt-schema.yaml)
+
+are meant to work together as an SMC-specific stack.
+
+If someone wants a different strategy, such as SMA crossover, RSI divergence, or breakout trading, the right approach is not to keep these exact SMC files and make them vague. The right approach is to create a new strategy-specific set of:
+
+1. backend analysis logic
+2. backend response contract
+3. Custom GPT instructions
+4. Custom GPT action schema
+
+Then replace the SMC versions in the backend and in the ChatGPT Custom GPT configuration.
+
+So the reusable asset is not "one universal instruction file." The reusable asset is:
+
+- ChatGPT Action flow
+- broker integration
+- analysis endpoint contract
+- journaling and execution plumbing
+
+### Example Non-SMC Adaptations
+
+- EMA pullback strategy:
+  Create EMA-specific analysis logic, EMA-specific GPT instructions, and an EMA-specific action schema.
+- RSI divergence strategy:
+  Create divergence-specific backend detection, divergence-specific instructions, and a schema that exposes those fields.
+- breakout strategy:
+  Create breakout-specific market structure fields, breakout instructions, and a breakout action contract.
+- swing trend strategy:
+  Create a trend-strategy backend, trend-strategy instructions, and a matching schema.
+
+Concrete example:
+
+- [examples/sma-strategy-pack-outline.md](examples/sma-strategy-pack-outline.md)
 
 ---
 
-## 🧩 Project Structure
+## Forking This For Another Strategy
 
-```bash
-chatgpt-smc-trading-assistant/
-├── app.py                  # FastAPI app (exposes /analyze, /place-order, etc.)
-├── ctrader_client.py       # cTrader Open API Twisted client
-├── analysis/               # SMC detection logic (CHOCH, BOS, OB, FVG, sessions, etc.)
-├── charts/                 # Plotly/lightweight-charts helpers (optional)
-├── gpt_instructions.md     # Strategy prompt template for your Custom GPT
-├── gpt-schema.yaml         # OpenAPI schema used by GPT Actions
-├── docker-compose.yml      # Backend-only compose (optional)
-├── Dockerfile              # Backend image
-├── requirements.txt        # Python deps
-├── .env.example            # Template for env vars
-├── docker_usage_guide.md   # (Optional) Docker notes
-└── README.md
+If you want to reuse the repo for a different strategy, keep the plumbing and replace the strategy layer.
 
+What usually stays the same:
+
+- cTrader connectivity in [ctrader_client.py](ctrader_client.py)
+- FastAPI app structure in [app.py](app.py)
+- order placement and journaling endpoints
+- ChatGPT Actions workflow
+
+What usually changes:
+
+- strategy logic in [analysis.py](analysis.py)
+- `/analyze` response shape in [app.py](app.py)
+- Custom GPT instructions in [gpt_instructions.md](gpt_instructions.md)
+- action schema in [gpt-schema.yaml](gpt-schema.yaml)
+
+### Example: SMA Crossover Version
+
+If you want an SMA crossover assistant, do not keep the SMC instructions and just rename things. Replace the strategy layer with SMA-specific outputs such as:
+
+- fast SMA value
+- slow SMA value
+- crossover direction
+- trend filter
+- pullback state
+- invalidation price
+- take-profit logic
+- confidence or confluence score
+
+In practice, the steps are:
+
+1. Rewrite [analysis.py](analysis.py) so it computes SMA signals instead of CHOCH, BOS, OB, and FVG.
+2. Update [app.py](app.py) so `/analyze` returns SMA-specific fields.
+3. Replace [gpt_instructions.md](gpt_instructions.md) with instructions telling ChatGPT how to interpret the SMA payload and when to place or avoid trades.
+4. Replace [gpt-schema.yaml](gpt-schema.yaml) so the Custom GPT Action matches the new SMA response contract.
+5. Paste the new instructions and schema into your Custom GPT configuration.
+
+That keeps the architecture while making the strategy implementation honest and internally consistent.
+
+---
+
+## How The Custom GPT Uses It
+
+The intended ChatGPT setup is:
+
+1. You create a Custom GPT in ChatGPT.
+2. You paste [gpt_instructions.md](gpt_instructions.md) into the GPT Instructions field.
+3. You paste [gpt-schema.yaml](gpt-schema.yaml) into the Actions schema field.
+4. You point the action base URL to your deployed backend.
+
+At runtime, the GPT should:
+
+1. call `/analyze`
+2. read structured fields like `HTF_Bias`, `Checklist`, and `Confluence`
+3. decide whether a setup qualifies
+4. optionally place or journal the trade
+
+The latest backend contract now includes:
+
+- `MTF_Zones` with OB, BOS, and FVG data
+- `Checklist` with CHOCH, BOS, OB, FVG, Sweep, and Candle
+- `Confluence` with weighted score and qualification status
+
+---
+
+## Project Structure
+
+```text
+chatgpt-trading-strategy-assistant/
+|-- app.py
+|-- analysis.py
+|-- charts.py
+|-- ctrader_client.py
+|-- gpt_instructions.md
+|-- gpt-schema.yaml
+|-- requirements.txt
+|-- Dockerfile
+|-- docker-compose.yml
+|-- .env.example
+|-- images/
+|-- examples/
+|   `-- analyze-response.sample.json
+|   `-- sma-strategy-pack-outline.md
+|-- scripts/
+|   `-- smoke_test.py
+`-- tests/
+    `-- test_analysis.py
 ```
 
-### 📌 Strategy Customization – Create Your Own Logic
+### Core Files
 
-This assistant is **strategy-agnostic** — you're not limited to Smart Money Concepts (SMC).
-
-You can define and run **any trading strategy** simply by rewriting the prompt instructions.
-
-#### ✍️ How to Create a New Strategy
-
-1. Open **ChatGPT → My GPTs**
-2. Select your GPT (e.g., `SMC Swing Trading cTrader`)
-3. Click **Edit GPT → Configure**
-4. In the **Instructions** field:
-   - Replace the existing SMC prompt with your own strategy guide
-   - Describe how the GPT should analyze OHLC and chart image inputs
-   - Specify what to detect (e.g., trend direction, breakout signals, RSI divergence, etc.)
-   - Define entry/exit rules (market/pending orders, SL/TP logic, filters)
-
-> 💡 **Example**:  
-> “Use Fibonacci retracement zones (0.5–0.618) combined with bullish MACD crossovers to identify long entries. Confirm structure with higher-timeframe trend direction. Return: signal, SL, TP, and confidence.”
-
-Once saved, the GPT will analyze live data from cTrader and generate trading decisions **based on your strategy logic** — no additional code needed.
-
+- [app.py](app.py): FastAPI app and action endpoints
+- [analysis.py](analysis.py): strategy analysis logic
+- [ctrader_client.py](ctrader_client.py): broker connectivity and order execution
+- [gpt_instructions.md](gpt_instructions.md): Custom GPT prompt behavior
+- [gpt-schema.yaml](gpt-schema.yaml): Actions schema for ChatGPT
 
 ---
 
-## 🧠 Project Overview
+## `/analyze` Output Contract
 
-This assistant enables end-to-end automation of Smart Money Concepts trading:
+The `/analyze` endpoint is the main decision engine. It is designed to return structured technical analysis that the GPT can cite directly instead of re-deriving logic from raw candles.
 
-### 🔹 Backend (Python + FastAPI)
+Current top-level fields:
 
-- Connects to **cTrader Open API** via Twisted
-- Exposes endpoints for:
-  - `/analyze` → complete SMC analysis pipeline (HTF bias, MTF zones, LTF entry)
-  - `/fetch-data` → raw OHLC data per symbol/timeframe
-  - `/tag-sessions` → tag M15/M5 candles with Asia/London/NY/PostNY
-  - `/session-levels` → extract highs/lows by session (e.g. NY high/low)
-  - `/place-order` → execute market/pending orders
-  - `/open-positions` → list active trades
-  - `/pending-orders` → list limit/stop orders
-  - `/journal-entry` → log trades to Notion
-- Runs in Docker with automatic ngrok tunneling
+- `HTF_Bias`
+- `MTF_Zones`
+- `LTF_Entry`
+- `Previous_Day_High`
+- `Previous_Day_Low`
+- `Session_Levels`
+- `Checklist`
+- `Confluence`
+- `News`
 
-### 🔸 Frontend (ChatGPT Custom GPT)
+Sample response:
 
-- Built inside **ChatGPT Plus** under “My GPTs”
-- Automatically calls backend endpoints for:
-  - 🔍 SMC trade analysis: CHOCH, FVG, OBs, liquidity, etc.
-  - 📰 Macro event checking from Investing.com / ForexFactory
-  - 🧾 Trade journaling with full setup summary
-  - 📈 Live trade placement
+- [examples/analyze-response.sample.json](examples/analyze-response.sample.json)
 
-
-### 🔬 New! Full Market Structure Analyzer (`/analyze`)
-
-Instead of fetching candles and interpreting them manually, the `/analyze` endpoint automates full market analysis using Smart Money Concepts. It returns:
-
-- HTF bias (via D1 structure)
-- MTF OBs and FVGs (H4/H1)
-- LTF entry confirmation (M15/M5 sweep, candle, etc.)
-- Session high/low analysis (Asia, London, NY)
-- Previous day high/low
-- Macro news integration
-- SMC checklist status (CHOCH, OB, FVG, Sweep, Candle)
-
-This powers most of ChatGPT’s decision-making.
-
+This matters for forks because if you change the strategy, you should keep the response contract coherent enough that the GPT can reason over it without hidden assumptions.
 
 ---
 
-## 🛠️ Setup Instructions
+## Setup
 
-### ✅ Requirements
-- Python 3.10 or newer
-- Docker and Docker Compose
-- Cloud for deploying FastAPI backend like Render (or Fly.io)
-- Demo cTrader broker account (such as IC Markets or Pepperstone)
-- OpenApi account: https://connect.spotware.com/apps
-- OpenAI ChatGPT Plus subscription
-- Notion account with integration enabled: https://www.notion.so/profile/integrations
+### Requirements
 
+- Python 3.10+
+- Docker and Docker Compose, if you want containerized runs
+- cTrader Open API credentials
+- ChatGPT Plus or another ChatGPT plan that supports Custom GPT Actions
+- Notion integration credentials, if you want journaling
 
-### 🌐 Deployment and Integration
+### Environment
 
-#### 🧠 1. Deploy Backend on Render (or Fly.io)
+Copy `.env.example` to `.env` and fill in your values:
 
-Render makes it easy to deploy your FastAPI backend:
-- Push code to GitHub
-- Connect repo to Render
-- Set environment variables manually (from your local .env)
-- Get a permanent public URL (e.g. https://your-service.onrender.com)
+```env
+NOTION_SECRET=your_notion_integration_token
+NOTION_DB_ID=your_notion_database_id
 
+CTRADER_CLIENT_ID=your_ctrader_client_id
+CTRADER_CLIENT_SECRET=your_ctrader_client_secret
+CTRADER_HOST_TYPE=demo
+CTRADER_ACCESS_TOKEN=your_ctrader_access_token
+CTRADER_ACCOUNT_ID=your_ctrader_account_id
 
-#### 🤩 2. Connect Backend to ChatGPT
-- Inside ChatGPT Plus:
-- Go to Explore GPTs → Create → Configure
-- In Instructions, paste your trading logic (e.g., SMC)
-- In Actions, paste your gpt-schema.yaml
-- Under API Base URL, enter your Render public URL (e.g., https://your-service.onrender.com)
-
-Done! You can now ask questions like:
-  "Analyze EURUSD using SMC and journal the trade"
-
-
-### 📦 Local Development (Optional)
-
-1. **Clone the repo**
-
-```bash
-git clone https://github.com/yourusername/chatgpt-smc-trading-assistant.git
-cd chatgpt-smc-trading-assistant
+NGROK_TOKEN=your_ngrok_auth_token
 ```
 
-2. **Edit** with your:
+### Local Run
 
-   - cTrader clientId, accessToken, accountId
-   - ngrok authtoken
+```bash
+python -m pip install -r requirements.txt
+python app.py
+```
 
-3. **Run with Docker Compose**
+Or with Docker:
 
 ```bash
 docker-compose up --build
 ```
 
-But we recommend deploying it to the cloud for uninterrupted GPT access or ngrok to link the api to chatgpt.
+---
+
+## Custom GPT Setup
+
+Inside ChatGPT:
+
+1. Go to `Explore GPTs` -> `Create`
+2. Open the `Configure` tab
+3. Paste [gpt_instructions.md](gpt_instructions.md) into Instructions
+4. Add a new Action
+5. Paste [gpt-schema.yaml](gpt-schema.yaml)
+6. Set the API base URL to your deployed backend URL
+
+If you fork this repo and replace the strategy:
+
+- update the instructions first
+- then update the schema if endpoint inputs or outputs changed
+- then validate the GPT behavior against a real `/analyze` response
 
 ---
 
-## 🖼️ Screenshots
+## Smoke Test
 
-### 🧠 GPT Assistant (Frontend UI)
-This is the interface of the custom GPT created for Smart Money Concepts trading analysis.
+Use the included smoke test to validate a running backend before wiring it into ChatGPT:
 
-![ GPT Assistant ](images/gpt-frontend.png)
+```bash
+python scripts/smoke_test.py --base-url http://127.0.0.1:8000 --symbol EURUSD
+```
 
-### 🔍 GPT Setup  (Instructions + Action Schema)
+It checks:
 
-GPT Instruction Configuration
-![GPT Setup](images/gpt-configuration-instruction.png)
+- `/health`
+- `/fetch-data`
+- `/analyze`
 
-GPT Action Schema Integration
-![GPT Setup](images/gpt-configuration-action-schema.png)
-
-
-
-## Example Natural Language Queries
-
-- Scan my 6-symbol list — EURUSD, NAS100, XAUUSD, GBPUSD, US30, BTCUSD — and give me the top 2–3 instruments showing the best SMC setups for today. Focus on clean structure, HTF alignment, and actionable intraday zones.
-- Analyze EURUSD for a swing trade setup
-- Reevaluate my EURUSD open position
-- Is my EURUSD trade still valid?
-- Should I move SL to breakeven on EURUSD?
-- Are there any major news events today?
-- What’s the macro outlook for EUR/USD this week?
-- Update me on any SMC confluence for EURUSD 
-- Return all opened positions
-- Return all pending oders
-
-
-
-## Example Outputs
-
-Analyze EURUSD for a swing trade setup
-
-### 🔍 **EURUSD – Full Top-Down SMC Swing Trade Analysis**
+The script uses only Python standard library modules, so it does not require extra dependencies.
 
 ---
 
-### 📈 EURUSD Swing Trade SMC Analysis (as of Aug 19, 2025)
+## Example Prompts
+
+- Analyze EURUSD using SMC
+- What is the HTF bias on NAS100?
+- Has New York swept the London high?
+- Reevaluate my GBPUSD long
+- Place a buy limit on EURUSD
+- Log this NAS100 trade
+- Return all open positions
+- Return all pending orders
 
 ---
 
-## 🟣 HTF (D1) Bias
+## Screenshots
 
-* **Macro Structure**: Sideways/Neutral trend.
-* **Last Swing High**: 1.17452 (July 25)
-* **Last Swing Low**: 1.14009 (July 29)
-* **Current Price**: 1.1663
+### Custom GPT Frontend
 
-**Bias**: **Neutral**, but leaning bullish as price is trading above the July 29 low and attempting to reclaim value inside July's range.
+![GPT Assistant](images/gpt-frontend.png)
 
----
+### GPT Instructions
 
-## 🔶 MTF Zones (H4 / H1)
+![GPT Instructions](images/gpt-configuration-instruction.png)
 
-### H4
+### GPT Action Schema
 
-* **Macro Bullish OB**: 1.15899 – 1.16175 *(Aug 11, NY session close)*
-* **Minor Bearish OB**: 1.17038 – 1.17153 *(Aug 15, NY session)*
-* **Down FVG**: 1.16817 – 1.17001 *(Aug 15, NY session)*
-* **No CHOCHs** observed.
-* **Liquidity Sweep**: Minor sweep of PDH on Aug 15 followed by retracement.
+![GPT Action Schema](images/gpt-configuration-action-schema.png)
 
-### H1
+### Trade Analysis
 
-* **Macro CHOCH**: 1.16544 → 1.16756 *(Aug 11 – Bullish shift)*
-* **Minor Bullish OB**: 1.16471 – 1.16559 *(Aug 19, Asia)*
-* **Down FVG**: 1.16614 – 1.16679 *(Aug 18)*
-* **Liquidity Sweep**: Asia low sweep (1.1651) → price rejected back above 1.166.
+![Trade Analysis](images/trade-analysis.png)
 
----
-
-## 🟢 LTF (M15 / M5) – Detailed Analysis
-
-### M15
-
-* **Macro OB**: None detected.
-* **Minor Bullish OB**: 1.16510 – 1.16560 *(Asia session reaction)*
-* **FVGs**: ✅ Up FVG: 1.16546 – 1.16586 *(Post Asia reaction)*
-* **Sweeps**: ✅ Sweep of Asia Low at 1.1651.
-* **Candle Confirmations**: ✅ Strong bullish engulfing at 03:00 UTC.
-
-### M5
-
-* **Macro CHOCH**: ✅ 1.16516 → 1.16585 *(03:10 UTC breakout)*
-* **Minor Bullish OB**: 1.16527 – 1.16548 *(03:00 UTC)*
-* **FVGs**: ✅ Bullish FVG: 1.16528 – 1.16554 *(Post-CHOCH)*
-* **Sweeps**: ✅ Confirmed Asia low liquidity sweep and rebound.
-* **Candle Confirmations**: ✅ Bullish engulfing + follow-through.
-
-**LTF Confluence Score**:
-
-* Macro CHOCH: ✅ +15%
-* Minor OB: ✅ +8%
-* FVG: ✅ +15%
-* Sweep: ✅ +20%
-* Candle: ✅ +20%
-
-➡️ **Total**: **78% (✅ Valid setup)**
-
----
-
-## 📌 Trade Recommendations
-
-### ✅ **Limit Order: Buy**
-
-* **Entry**: 1.16528 (M5 OB + FVG overlap)
-* **Stop Loss**: 1.16440 (below Asia low)
-* **TP1**: 1.16890 (inside H4 FVG)
-* **TP2**: 1.17150 (sweep of minor H4 OB)
-
-**Rationale**: Post-Asia low sweep, bullish CHOCH, strong LTF confluence, rejection from M5 OB. No high-impact news within 4h. Clean internal liquidity target.
-
----
-
-## 🛑 Risk Filters
-
-* **ADR%**: 38% (✅ acceptable range)
-* **News**: ❌ No high-impact events in next 4h.
-* **Session**: ✅ Transitioning into London Open (ideal for FX pairs).
-* **Weekly Context**: Neutral USD outlook — no major monetary catalyst.
-
----
-
-## 📝 Suggested Journal Entry
-
-* **Title**: EURUSD LTF OB Reversal After Asia Sweep
-* **Symbol**: EURUSD
-* **Session**: London Open
-* **HTF Bias**: Neutral, leaning bullish
-* **Entry Type**: Sweep Reversal
-* **Entry**: 1.16528
-* **SL**: 1.16440
-* **TP1**: 1.16890, **TP2**: 1.17150
-* **Order Type**: Limit
-* **Note**: LTF bullish CHOCH after Asia liquidity sweep. Strong M5 confirmation.
-* **Checklist**: Macro CHOCH, M5 OB, FVG, Asia Sweep, Bullish Candle
-* **News Events**: None within next 4 hours
-* **Chart URL**: *(can be added via platform screenshot)*
-
----
-
-Let me know if you want this trade journaled or visualized.
-
-
-
----
-
-✅ **Limit Buy order placed** successfully on **EURUSD**:
-
-* **Entry**: 1.16528
-* **Stop Loss**: 1.16440
-* **Take Profit**: 1.17150
-* **Volume**: 1.0 lot
-
-Order is live and waiting for execution. Want me to monitor this or alert on activation/profit events?
-
-
----
-
-
-## 📝 Trade Journal – EURUSD
-
-| Field            | Value                                            |       |         |         |          |
-| ---------------- | ------------------------------------------------ | ----- | ------- | ------- | -------- |
-| **Title**        | EURUSD – Asia Sweep into M5 OB Reversal          |       |         |         |          |
-| **Symbol**       | EURUSD                                           |       |         |         |          |
-| **Session**      | London                                           |       |         |         |          |
-| **HTF Bias**     | Neutral, leaning bullish                         |       |         |         |          |
-| **Entry Type**   | Sweep Reversal                                   |       |         |         |          |
-| **Entry**        | 1.16528                                          |       |         |         |          |
-| **Stop Loss**    | 1.16440                                          |       |         |         |          |
-| **Target Price** | 1.17150                                          |       |         |         |          |
-| **Order Type**   | Limit                                            |       |         |         |          |
-| **Note**         | M5 bullish OB + CHOCH + FVG after Asia low sweep |       |         |         |          |
-| **Checklist**    | OB ✅                                             | FVG ✅ | Sweep ✅ | CHOCH ✅ | Candle ✅ |
-| **News Events**  | None                                             |       |         |         |          |
-
-
-
-Would you like a visual SMC chart for this setup?
-
-
-### 🧠 Trade Analysis Output Chart
-Live OHLC analysis, SMC element detection, and structured journal suggestion.
-
-![ChatGPT Trade Analysis](images/trade-analysis.png)
-
-Would you like me to journal this or place the trade?
-
-### 📈 Order Execution via cTrader
-Automatically places pending or market orders via the FastAPI backend.
+### Order Execution
 
 ![Order Execution](images/order-execution.png)
- 
 
-### 📓 Notion Journal Entry
-Posts the confirmed trades, with checklist, news context, and chart links into Notion.
+### Notion Journal
 
-![Notion Entry](images/notion-journal.png)
-
+![Notion Journal](images/notion-journal.png)
 
 ---
 
----
+## API Endpoints
 
-## 🔌 API Endpoints Reference
-
-| Endpoint            | Purpose                                    |
-|---------------------|--------------------------------------------|
-| `/analyze`          | Full SMC analysis using all logic modules  |
-| `/fetch-data`       | Get raw OHLC data                          |
-| `/tag-sessions`     | Tag each candle with Asia/London/NY label  |
-| `/session-levels`   | Get highs/lows for each trading session    |
-| `/place-order`      | Submit a trade via cTrader OpenAPI         |
-| `/open-positions`   | View currently open positions              |
-| `/pending-orders`   | View pending (limit/stop) orders           |
-| `/journal-entry`    | Save a trade with notes/checklist to Notion |
+| Endpoint | Purpose |
+| --- | --- |
+| `/analyze` | Full multi-timeframe strategy analysis |
+| `/fetch-data` | Fetch raw OHLC data |
+| `/tag-sessions` | Label candles by session |
+| `/session-levels` | Compute session highs and lows |
+| `/place-order` | Submit orders through cTrader |
+| `/open-positions` | View active positions |
+| `/pending-orders` | View pending orders |
+| `/journal-entry` | Save trade notes to Notion |
 
 ---
 
-## ⚠️ Disclaimer
+## Important Notes
 
-> This project is intended for **educational and learning purposes only**. Do **not** use it for real trading with live money. Always test with **demo accounts** as shown in the examples. Trading involves significant risk.
+- This repo is educational and experimental software.
+- Do not treat ChatGPT output as a guaranteed trading edge.
+- Do not deploy against live funds until you have verified strategy logic, execution semantics, and failure handling.
+- Always test on demo first.
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the [MIT License](LICENSE).

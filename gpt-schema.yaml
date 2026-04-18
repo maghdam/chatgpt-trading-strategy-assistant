@@ -9,7 +9,7 @@ paths:
   /fetch-data:
     post:
       operationId: fetchMarketData
-      summary: Fetch OHLC market data or chart image
+      summary: Fetch OHLC market data and optionally return a chart image
       requestBody:
         required: true
         content:
@@ -34,7 +34,7 @@ paths:
                   default: false
       responses:
         "200":
-          description: Market data or chart image
+          description: Market data with optional chart image
           content:
             application/json:
               schema:
@@ -44,8 +44,6 @@ paths:
                     type: string
                   timeframe:
                     type: string
-                  live_price:
-                    type: number
                   ohlc:
                     type: array
                     items:
@@ -61,10 +59,15 @@ paths:
                           type: number
                         close:
                           type: number
-                        tick_volume:
+                        volume:
                           type: number
+                  context:
+                    type: object
+                  trend:
+                    type: object
                   chart_image_base64:
                     type: string
+                    nullable: true
         "404":
           description: Symbol or timeframe not found
 
@@ -80,7 +83,6 @@ paths:
               type: object
               required:
                 - title
-                - date
                 - symbol
                 - session
                 - htf_bias
@@ -92,10 +94,6 @@ paths:
               properties:
                 title:
                   type: string
-                date:
-                  type: string
-                  format: date-time
-                  nullable: true
                 symbol:
                   type: string
                 session:
@@ -172,12 +170,15 @@ paths:
                           type: number
                         volume_units:
                           type: integer
-                        unrealized_profit_chf:
+                        unrealized_profit:
                           type: number
+                          nullable: true
                         timestamp_utc:
                           type: string
+                          nullable: true
                         timestamp_local:
                           type: string
+                          nullable: true
         "500":
           description: Failed to retrieve open positions
 
@@ -207,6 +208,7 @@ paths:
                   enum: [BUY, SELL]
                 volume:
                   type: number
+                  description: Position size in lots (for example 1.0). Large integer values are also accepted as native cTrader units for backward compatibility.
                 entry_price:
                   type: number
                 stop_loss:
@@ -438,7 +440,7 @@ paths:
                     description: Macro trend direction from D1 timeframe
                   MTF_Zones:
                     type: object
-                    description: Multi-timeframe order blocks and fair value gaps
+                    description: Multi-timeframe order blocks, BOS signals, and fair value gaps
                   LTF_Entry:
                     type: object
                     description: Low timeframe entry details (M15/M5)
@@ -451,7 +453,31 @@ paths:
                     description: Session highs and lows (Asia, London, NY, PostNY)
                   Checklist:
                     type: object
-                    description: Full technical checklist (CHOCH, OB, FVG, Sweep, Candle)
+                    description: Full technical checklist (CHOCH, BOS, OB, FVG, Sweep, Candle)
+                  Confluence:
+                    type: object
+                    description: Weighted confluence result used to decide whether a setup qualifies
+                    properties:
+                      direction:
+                        type: string
+                        description: Bullish, bearish, or neutral setup direction
+                      score:
+                        type: integer
+                      threshold:
+                        type: integer
+                      eligible:
+                        type: boolean
+                      components:
+                        type: object
+                        description: Weighted component map showing which signals contributed
+                      present_components:
+                        type: array
+                        items:
+                          type: string
+                      summary:
+                        type: string
+                      htf_bias_aligned:
+                        type: boolean
                   News:
                     type: string
                     nullable: true

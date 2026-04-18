@@ -7,3 +7,4 @@ service_identity
 python-dotenv
 numpy
 plotly
+kaleido

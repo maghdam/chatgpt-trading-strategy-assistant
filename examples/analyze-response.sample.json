@@ -1,0 +1,189 @@
+{
+  "HTF_Bias": "bullish",
+  "MTF_Zones": {
+    "H4_Macro_OB": {
+      "type": "bullish",
+      "low": 1.0842,
+      "high": 1.0871,
+      "time": "2026-04-14T08:00:00+00:00",
+      "broken_level": 1.0883,
+      "impulse_time": "2026-04-15T08:00:00+00:00",
+      "index": 176,
+      "label": "macro"
+    },
+    "H4_Minor_OB": {
+      "type": "bullish",
+      "low": 1.0912,
+      "high": 1.0924,
+      "time": "2026-04-17T04:00:00+00:00",
+      "broken_level": 1.0931,
+      "impulse_time": "2026-04-17T08:00:00+00:00",
+      "index": 294,
+      "label": "minor"
+    },
+    "H1_Macro_OB": null,
+    "H1_Minor_OB": {
+      "type": "bullish",
+      "low": 1.0928,
+      "high": 1.0936,
+      "time": "2026-04-18T06:00:00+00:00",
+      "broken_level": 1.0941,
+      "impulse_time": "2026-04-18T08:00:00+00:00",
+      "index": 486,
+      "label": "minor"
+    },
+    "H4_BOS": {
+      "macro": {
+        "time": "2026-04-16T12:00:00+00:00",
+        "direction": "bullish",
+        "broken_level": 1.0901,
+        "reference_time": "2026-04-15T08:00:00+00:00",
+        "label": "macro"
+      },
+      "minor": {
+        "time": "2026-04-18T08:00:00+00:00",
+        "direction": "bullish",
+        "broken_level": 1.0941,
+        "reference_time": "2026-04-18T04:00:00+00:00",
+        "label": "minor"
+      }
+    },
+    "H1_BOS": {
+      "macro": null,
+      "minor": {
+        "time": "2026-04-18T08:00:00+00:00",
+        "direction": "bullish",
+        "broken_level": 1.0941,
+        "reference_time": "2026-04-18T06:00:00+00:00",
+        "label": "minor"
+      }
+    },
+    "H4_FVG": {
+      "type": "up_fvg",
+      "low": 1.0904,
+      "high": 1.091,
+      "base_time": "2026-04-17T08:00:00+00:00"
+    },
+    "H1_FVG": {
+      "type": "up_fvg",
+      "low": 1.0938,
+      "high": 1.0942,
+      "base_time": "2026-04-18T08:00:00+00:00"
+    }
+  },
+  "LTF_Entry": {
+    "entry_type": "bullish",
+    "entry_price": 1.0948,
+    "stop_loss": 1.0936,
+    "take_profit": 1.0972,
+    "notes": "Bullish displacement after liquidity sweep and higher-timeframe support"
+  },
+  "Previous_Day_High": 1.0955,
+  "Previous_Day_Low": 1.0881,
+  "Session_Levels": {
+    "Asia": {
+      "high": 1.0939,
+      "low": 1.0917
+    },
+    "London": {
+      "high": 1.0949,
+      "low": 1.0929
+    }
+  },
+  "Checklist": {
+    "CHOCH": {
+      "macro": null,
+      "minor": {
+        "time": "2026-04-18T08:10:00+00:00",
+        "direction": "bullish",
+        "broken_level": 1.0941,
+        "reference_time": "2026-04-18T07:45:00+00:00",
+        "label": "minor"
+      }
+    },
+    "BOS": {
+      "macro": null,
+      "minor": {
+        "time": "2026-04-18T08:15:00+00:00",
+        "direction": "bullish",
+        "broken_level": 1.0943,
+        "reference_time": "2026-04-18T08:00:00+00:00",
+        "label": "minor"
+      }
+    },
+    "OB": {
+      "macro": null,
+      "minor": {
+        "type": "bullish",
+        "low": 1.0937,
+        "high": 1.0941,
+        "time": "2026-04-18T08:00:00+00:00",
+        "broken_level": 1.0943,
+        "impulse_time": "2026-04-18T08:15:00+00:00",
+        "index": 497,
+        "label": "minor"
+      }
+    },
+    "FVG": {
+      "type": "up_fvg",
+      "low": 1.0941,
+      "high": 1.0944,
+      "base_time": "2026-04-18T08:10:00+00:00"
+    },
+    "Sweep": {
+      "sweeps": [
+        "Asia Low sweep"
+      ],
+      "latest": "Asia Low sweep"
+    },
+    "Candle": {
+      "type": "Bullish Engulfing"
+    }
+  },
+  "Confluence": {
+    "direction": "bullish",
+    "score": 73,
+    "threshold": 70,
+    "eligible": true,
+    "components": {
+      "macro_choch": {
+        "present": false,
+        "weight": 15
+      },
+      "minor_choch": {
+        "present": true,
+        "weight": 10
+      },
+      "macro_ob": {
+        "present": false,
+        "weight": 12
+      },
+      "minor_ob": {
+        "present": true,
+        "weight": 8
+      },
+      "fvg": {
+        "present": true,
+        "weight": 15
+      },
+      "sweep": {
+        "present": true,
+        "weight": 20
+      },
+      "candle_confirm": {
+        "present": true,
+        "weight": 20
+      }
+    },
+    "present_components": [
+      "minor_choch",
+      "minor_ob",
+      "fvg",
+      "sweep",
+      "candle_confirm"
+    ],
+    "summary": "Bullish setup meets confluence threshold.",
+    "htf_bias_aligned": true
+  },
+  "News": ""
+}
