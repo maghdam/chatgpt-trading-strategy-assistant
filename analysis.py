@@ -167,7 +167,9 @@ def _latest_choch_event(candles: list[dict], lookback: int, swing_window: int) -
             return {
                 "time": current["break_time"],
                 "direction": current["direction"],
+                "break_index": current["break_index"],
                 "broken_level": current["broken_level"],
+                "reference_index": current["reference_index"],
                 "reference_time": current["reference_time"],
             }
 
@@ -186,7 +188,9 @@ def _latest_bos_event(candles: list[dict], lookback: int, swing_window: int) -> 
             return {
                 "time": current["break_time"],
                 "direction": current["direction"],
+                "break_index": current["break_index"],
                 "broken_level": current["broken_level"],
+                "reference_index": current["reference_index"],
                 "reference_time": current["reference_time"],
             }
 

@@ -1,5 +1,7 @@
 import unittest
+from unittest.mock import patch
 
+import analysis as analysis_module
 from analysis import (
     detect_bos,
     detect_fvg,
@@ -109,6 +111,51 @@ class AnalysisTests(unittest.TestCase):
 
         self.assertIsNotNone(bos)
         self.assertEqual(bos["minor"]["direction"], "bullish")
+
+    def test_detect_order_block_retains_break_index_from_choch(self):
+        candles = [
+            candle("2026-01-01T00:00:00+00:00", 100.0, 101.0, 99.0, 100.5),
+            candle("2026-01-01T00:05:00+00:00", 100.5, 101.0, 99.5, 100.0),
+            candle("2026-01-01T00:10:00+00:00", 100.0, 102.0, 99.8, 101.5),
+            candle("2026-01-01T00:15:00+00:00", 101.5, 103.0, 101.0, 102.5),
+            candle("2026-01-01T00:20:00+00:00", 102.5, 103.0, 100.5, 101.0),
+            candle("2026-01-01T00:25:00+00:00", 101.0, 105.0, 100.8, 104.5),
+            candle("2026-01-01T00:30:00+00:00", 104.5, 105.0, 103.5, 104.0),
+            candle("2026-01-01T00:35:00+00:00", 104.0, 106.0, 103.8, 105.5),
+        ]
+        break_events = [
+            {
+                "direction": "bearish",
+                "break_index": 2,
+                "break_time": candles[2]["time"],
+                "reference_index": 1,
+                "reference_time": candles[1]["time"],
+                "broken_level": 99.5,
+            },
+            {
+                "direction": "bullish",
+                "break_index": 5,
+                "break_time": candles[5]["time"],
+                "reference_index": 3,
+                "reference_time": candles[3]["time"],
+                "broken_level": 103.0,
+            },
+        ]
+
+        with patch.object(
+            analysis_module,
+            "_find_break_events",
+            return_value=break_events,
+        ):
+            order_block = analysis_module.detect_order_block(
+                candles,
+                lookback=8,
+                macro_threshold=8,
+            )
+
+        self.assertIsNotNone(order_block)
+        self.assertEqual(order_block["macro"]["impulse_time"], candles[5]["time"])
+        self.assertEqual(order_block["minor"]["impulse_time"], candles[5]["time"])
 
     def test_score_confluence_uses_weighted_components(self):
         checklist = {
