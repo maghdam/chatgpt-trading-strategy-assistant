@@ -30,15 +30,18 @@ from analysis import (
 from charts import generate_smc_chart
 from ctrader_client import (
     ACCOUNT_ID,
+    CTraderUnavailableError,
     VOLUME_UNITS_PER_LOT,
     client,
     get_ohlc_data,
     get_open_positions,
     get_pending_orders,
+    get_symbol_status,
     init_client,
     place_order,
     symbol_name_to_id,
     wait_for_deferred,
+    wait_for_symbols,
 )
 
 app = FastAPI()
@@ -198,12 +201,11 @@ def label_session(utc_iso_time: str) -> str:
     return "Unknown"
 
 
-def wait_until_symbols_loaded(timeout: int = 10) -> bool:
-    for _ in range(timeout * 10):
-        if symbol_name_to_id:
-            return True
-        time.sleep(0.1)
-    return False
+def require_symbols_loaded(timeout: int = 10) -> None:
+    try:
+        wait_for_symbols(timeout)
+    except CTraderUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 def volume_to_units(volume: float) -> int:
@@ -280,12 +282,27 @@ async def session_levels(data: CandleList):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def service_status() -> dict:
+    return {
+        "status": "ok",
+        "connected": bool(getattr(client, "isConnected", False)),
+        **get_symbol_status(),
+    }
+
+
+@app.get("/")
+def root():
+    return service_status()
+
+
+@app.head("/", include_in_schema=False)
+def root_head():
+    return Response(status_code=200)
+
+
 @app.get("/health")
 def health():
-    return {
-        "symbols_loaded": len(symbol_name_to_id),
-        "connected": getattr(client, "connected", False),
-    }
+    return service_status()
 
 
 @app.post("/journal-entry")
@@ -329,6 +346,7 @@ async def journal_entry(entry: JournalEntry):
 @app.post("/fetch-data")
 async def fetch_data(req: FetchDataRequest):
     try:
+        require_symbols_loaded()
         symbol_key = req.symbol.upper()
         if symbol_key not in symbol_name_to_id:
             raise HTTPException(status_code=404, detail=f"Symbol '{req.symbol}' not found")
@@ -375,8 +393,10 @@ async def open_positions():
     try:
         positions = get_open_positions()
         return {"positions": positions}
+    except CTraderUnavailableError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/place-order")
@@ -384,8 +404,7 @@ def place_order_main(order: PlaceOrderRequest):
     try:
         validate_order_request(order)
 
-        if not wait_until_symbols_loaded():
-            raise HTTPException(status_code=503, detail="Symbols not loaded yet. Try again shortly.")
+        require_symbols_loaded()
 
         symbol_key = order.symbol.upper()
         if symbol_key not in symbol_name_to_id:
@@ -429,14 +448,23 @@ def place_order_alias(order: PlaceOrderRequest):
 async def pending_orders():
     try:
         return get_pending_orders()
+    except CTraderUnavailableError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/analyze", response_model=AnalyzeResponse)
 async def analyze(req: AnalyzeRequest):
     try:
+        require_symbols_loaded()
         symbol = req.symbol
+        if symbol.upper() not in symbol_name_to_id:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Symbol '{symbol}' not found for the configured cTrader account.",
+            )
+
         timeframes = ["D1", "H4", "H1", "M15", "M5"]
         data = {}
         bar_depth = {
@@ -526,8 +554,12 @@ async def analyze(req: AnalyzeRequest):
         except Exception as e:
             print("Exception while constructing AnalyzeResponse:", e)
             raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except CTraderUnavailableError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/chart")
@@ -539,6 +571,12 @@ async def chart(
     take_profit: Optional[float] = None,
 ):
     try:
+        require_symbols_loaded()
+        if symbol.upper() not in symbol_name_to_id:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Symbol '{symbol}' not found for the configured cTrader account.",
+            )
         candles_data = get_ohlc_data(symbol, timeframe, n=100)
         candles = candles_data["candles"]
         image_bytes = generate_smc_chart(
@@ -547,8 +585,12 @@ async def chart(
             highlights=build_chart_highlights(candles, entry, stop_loss, take_profit),
         )
         return Response(content=image_bytes, media_type="image/png")
+    except HTTPException:
+        raise
+    except CTraderUnavailableError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 if __name__ == "__main__":
