@@ -1,22 +1,29 @@
 # ctrader_client.py
 
 import calendar
+import logging
 import os
 import threading
 import time
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 import numpy as np
 from ctrader_open_api import Client, EndPoints, Protobuf, TcpProtocol
 from ctrader_open_api.messages.OpenApiMessages_pb2 import (
     ProtoOAAccountAuthReq,
+    ProtoOAAccountAuthRes,
     ProtoOAAmendOrderReq,
     ProtoOAAmendPositionSLTPReq,
     ProtoOAApplicationAuthReq,
+    ProtoOAApplicationAuthRes,
     ProtoOAGetTrendbarsReq,
+    ProtoOAGetTrendbarsRes,
     ProtoOANewOrderReq,
     ProtoOAReconcileReq,
+    ProtoOAReconcileRes,
     ProtoOASymbolsListReq,
+    ProtoOASymbolsListRes,
 )
 from ctrader_open_api.messages.OpenApiModelMessages_pb2 import (
     ProtoOAOrderType,
@@ -27,6 +34,8 @@ from dotenv import load_dotenv
 from twisted.internet import reactor
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 CLIENT_ID = os.getenv("CTRADER_CLIENT_ID")
 CLIENT_SECRET = os.getenv("CTRADER_CLIENT_SECRET")
@@ -42,51 +51,196 @@ symbol_map: dict[int, str] = {}
 symbol_name_to_id: dict[str, int] = {}
 symbol_digits_map: dict[int, int] = {}
 
+_symbol_state_lock = threading.Lock()
+_symbols_ready = threading.Event()
+_symbol_load_error: Optional[str] = None
 
-def on_error(failure):
-    print("[ERROR]", failure)
+
+class CTraderUnavailableError(RuntimeError):
+    """Raised when cTrader authentication or catalogue loading is unavailable."""
+
+
+def _describe_response(payload) -> str:
+    details = [type(payload).__name__]
+    error_code = getattr(payload, "errorCode", None)
+    description = getattr(payload, "description", None)
+    if error_code:
+        details.append(f"errorCode={error_code}")
+    if description:
+        details.append(f"description={description}")
+    return ", ".join(details)
+
+
+def _extract_expected(res, expected_type, stage: str):
+    payload = Protobuf.extract(res)
+    if not isinstance(payload, expected_type):
+        raise CTraderUnavailableError(
+            f"{stage} returned {_describe_response(payload)}; "
+            f"expected {expected_type.__name__}. Verify the cTrader access token, "
+            f"account ID, and {HOST_TYPE} environment."
+        )
+    return payload
+
+
+def _reset_symbol_state() -> None:
+    global _symbol_load_error
+    with _symbol_state_lock:
+        symbol_map.clear()
+        symbol_name_to_id.clear()
+        symbol_digits_map.clear()
+        _symbol_load_error = None
+        _symbols_ready.clear()
+
+
+def _set_symbol_error(message: str) -> None:
+    global _symbol_load_error
+    with _symbol_state_lock:
+        symbol_map.clear()
+        symbol_name_to_id.clear()
+        symbol_digits_map.clear()
+        _symbol_load_error = message
+        _symbols_ready.set()
+    logger.error("[cTrader] %s", message)
+
+
+def get_symbol_status() -> dict:
+    with _symbol_state_lock:
+        return {
+            "ready": _symbols_ready.is_set()
+            and _symbol_load_error is None
+            and bool(symbol_name_to_id),
+            "symbols_loaded": len(symbol_name_to_id),
+            "error": _symbol_load_error,
+        }
+
+
+def wait_for_symbols(timeout: float = 10) -> None:
+    if not _symbols_ready.wait(timeout):
+        raise CTraderUnavailableError(
+            "cTrader symbol catalogue is still loading. Try again shortly."
+        )
+
+    with _symbol_state_lock:
+        if _symbol_load_error:
+            raise CTraderUnavailableError(_symbol_load_error)
+        if not symbol_name_to_id:
+            raise CTraderUnavailableError(
+                "cTrader returned an empty symbol catalogue for this account."
+            )
+
+
+def _transport_error(stage: str):
+    def errback(failure):
+        get_message = getattr(failure, "getErrorMessage", None)
+        reason = get_message() if callable(get_message) else str(failure)
+        _set_symbol_error(f"{stage} failed: {reason}")
+        return None
+
+    return errback
 
 
 def symbols_response_cb(res):
-    global symbol_map, symbol_name_to_id, symbol_digits_map
-    symbol_map.clear()
-    symbol_name_to_id.clear()
-    symbol_digits_map.clear()
+    try:
+        symbols = _extract_expected(
+            res,
+            ProtoOASymbolsListRes,
+            "Symbol catalogue request",
+        )
+        next_symbol_map = {}
+        next_name_to_id = {}
+        next_digits_map = {}
 
-    symbols = Protobuf.extract(res)
-    for symbol in symbols.symbol:
-        digits = getattr(symbol, "digits", getattr(symbol, "pipPosition", 5))
-        symbol_map[symbol.symbolId] = symbol.symbolName
-        symbol_name_to_id[symbol.symbolName.upper()] = symbol.symbolId
-        symbol_digits_map[symbol.symbolId] = digits
+        for symbol in symbols.symbol:
+            digits = getattr(symbol, "digits", getattr(symbol, "pipPosition", 5))
+            next_symbol_map[symbol.symbolId] = symbol.symbolName
+            next_name_to_id[symbol.symbolName.upper()] = symbol.symbolId
+            next_digits_map[symbol.symbolId] = digits
 
-    print(f"[DEBUG] Loaded {len(symbol_map)} symbols.")
+        if not next_symbol_map:
+            raise CTraderUnavailableError(
+                "cTrader returned an empty symbol catalogue for this account."
+            )
+    except Exception as exc:
+        _set_symbol_error(str(exc))
+        return None
+
+    global _symbol_load_error
+    with _symbol_state_lock:
+        symbol_map.clear()
+        symbol_map.update(next_symbol_map)
+        symbol_name_to_id.clear()
+        symbol_name_to_id.update(next_name_to_id)
+        symbol_digits_map.clear()
+        symbol_digits_map.update(next_digits_map)
+        _symbol_load_error = None
+        _symbols_ready.set()
+
+    logger.info("[cTrader] Loaded %s symbols.", len(next_symbol_map))
+    return symbols
 
 
-def account_auth_cb(_):
+def account_auth_cb(res):
+    try:
+        response = _extract_expected(
+            res,
+            ProtoOAAccountAuthRes,
+            "Account authentication",
+        )
+        if response.ctidTraderAccountId != ACCOUNT_ID:
+            raise CTraderUnavailableError(
+                "cTrader authenticated a different account than CTRADER_ACCOUNT_ID."
+            )
+    except Exception as exc:
+        _set_symbol_error(str(exc))
+        return None
+
     req = ProtoOASymbolsListReq(
         ctidTraderAccountId=ACCOUNT_ID,
         includeArchivedSymbols=False,
     )
-    client.send(req).addCallbacks(symbols_response_cb, on_error)
+    deferred = client.send(req)
+    deferred.addCallback(symbols_response_cb)
+    deferred.addErrback(_transport_error("Symbol catalogue request"))
+    return deferred
 
 
-def app_auth_cb(_):
+def app_auth_cb(res):
+    try:
+        _extract_expected(
+            res,
+            ProtoOAApplicationAuthRes,
+            "Application authentication",
+        )
+    except Exception as exc:
+        _set_symbol_error(str(exc))
+        return None
+
     req = ProtoOAAccountAuthReq(
         ctidTraderAccountId=ACCOUNT_ID,
         accessToken=ACCESS_TOKEN,
     )
-    client.send(req).addCallbacks(account_auth_cb, on_error)
+    deferred = client.send(req)
+    deferred.addCallback(account_auth_cb)
+    deferred.addErrback(_transport_error("Account authentication"))
+    return deferred
 
 
 def connected(_):
+    _reset_symbol_state()
     req = ProtoOAApplicationAuthReq(clientId=CLIENT_ID, clientSecret=CLIENT_SECRET)
-    client.send(req).addCallbacks(app_auth_cb, on_error)
+    deferred = client.send(req)
+    deferred.addCallback(app_auth_cb)
+    deferred.addErrback(_transport_error("Application authentication"))
+    return deferred
+
+
+def disconnected(_, reason):
+    _set_symbol_error(f"cTrader disconnected: {reason}")
 
 
 def init_client():
     client.setConnectedCallback(connected)
-    client.setDisconnectedCallback(lambda c, r: print("[INFO] Disconnected:", r))
+    client.setDisconnectedCallback(disconnected)
     client.setMessageReceivedCallback(lambda c, m: None)
     client.startService()
     reactor.run(installSignalHandlers=False)
@@ -105,6 +259,7 @@ def _trendbar_to_candle(trendbar):
 
 
 def get_ohlc_data(symbol: str, tf: str = "D1", n: int = 10):
+    wait_for_symbols()
     sid = symbol_name_to_id.get(symbol.upper())
     if sid is None:
         raise ValueError(f"Unknown symbol '{symbol}'")
@@ -122,19 +277,22 @@ def get_ohlc_data(symbol: str, tf: str = "D1", n: int = 10):
     box = {}
 
     def callback(response):
-        box["candles"] = [_trendbar_to_candle(tb) for tb in Protobuf.extract(response).trendbar]
+        payload = _extract_expected(response, ProtoOAGetTrendbarsRes, "Trendbar request")
+        box["candles"] = [_trendbar_to_candle(tb) for tb in payload.trendbar]
         ready.set()
 
     def errback(failure):
         box["error"] = failure
         ready.set()
-        return failure
+        return None
 
-    client.send(req).addCallbacks(callback, errback)
+    deferred = client.send(req)
+    deferred.addCallback(callback)
+    deferred.addErrback(errback)
     if not ready.wait(10):
         raise TimeoutError(f"Timed out fetching {tf} candles for {symbol}.")
     if "error" in box:
-        raise RuntimeError(str(box["error"]))
+        raise CTraderUnavailableError(str(box["error"]))
 
     candles = box.get("candles", [])[-n:]
     highs = [bar["high"] for bar in candles]
@@ -177,11 +335,12 @@ def get_ohlc_data(symbol: str, tf: str = "D1", n: int = 10):
 
 
 def get_open_positions():
+    wait_for_symbols()
     ready = threading.Event()
     box = {"positions": []}
 
     def callback(response):
-        rec = Protobuf.extract(response)
+        rec = _extract_expected(response, ProtoOAReconcileRes, "Reconcile request")
         positions = []
         for position in rec.position:
             trade_data = position.tradeData
@@ -222,14 +381,16 @@ def get_open_positions():
     def errback(failure):
         box["error"] = failure
         ready.set()
-        return failure
+        return None
 
     req = ProtoOAReconcileReq(ctidTraderAccountId=ACCOUNT_ID)
-    client.send(req).addCallbacks(callback, errback)
+    deferred = client.send(req)
+    deferred.addCallback(callback)
+    deferred.addErrback(errback)
     if not ready.wait(5):
         raise TimeoutError("Timed out waiting for open positions.")
     if "error" in box:
-        raise RuntimeError(str(box["error"]))
+        raise CTraderUnavailableError(str(box["error"]))
     return box["positions"]
 
 
@@ -349,9 +510,10 @@ def wait_for_deferred(d, timeout=10):
     def errback(failure):
         box["failure"] = failure
         evt.set()
-        return failure
+        return None
 
-    d.addCallbacks(callback, errback)
+    d.addCallback(callback)
+    d.addErrback(errback)
     if not evt.wait(timeout):
         return {"status": "failed", "error": f"Timed out after {timeout} seconds."}
 
@@ -362,11 +524,12 @@ def wait_for_deferred(d, timeout=10):
 
 
 def get_pending_orders():
+    wait_for_symbols()
     ready = threading.Event()
     box = {"orders": []}
 
     def callback(response):
-        res = Protobuf.extract(response)
+        res = _extract_expected(response, ProtoOAReconcileRes, "Reconcile request")
         orders = []
 
         for order in res.order:
@@ -405,12 +568,14 @@ def get_pending_orders():
     def errback(failure):
         box["error"] = failure
         ready.set()
-        return failure
+        return None
 
     req = ProtoOAReconcileReq(ctidTraderAccountId=ACCOUNT_ID)
-    client.send(req).addCallbacks(callback, errback)
+    deferred = client.send(req)
+    deferred.addCallback(callback)
+    deferred.addErrback(errback)
     if not ready.wait(12):
         raise TimeoutError("Timed out waiting for pending orders.")
     if "error" in box:
-        raise RuntimeError(str(box["error"]))
+        raise CTraderUnavailableError(str(box["error"]))
     return {"orders": box["orders"]}
