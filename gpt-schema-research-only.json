@@ -1,0 +1,108 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Private SMC Research - Staging Action Contract",
+    "version": "0.1.0",
+    "description": "Staging-only analysis/candles contract for private GPT-to-plugin migration. Not an MCP server, not an authorization layer, and not approved for connecting to broker-backed production services."
+  },
+  "servers": [
+    {
+      "url": "https://example.invalid",
+      "description": "Deliberately non-routable placeholder; DO NOT replace until server-side authentication and execution lockout are independently verified."
+    }
+  ],
+  "paths": {
+    "/analyze": {
+      "post": {
+        "operationId": "analyzeSMCResearch",
+        "summary": "Read multi-timeframe SMC analysis without broker mutations",
+        "x-research-only": true,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "symbol"
+                ],
+                "properties": {
+                  "symbol": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 48,
+                    "description": "Broker symbol for research only."
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Read-only SMC research response (backend-defined HTF_Bias, MTF_Zones, LTF_Entry, Checklist, Confluence, session levels, and source metadata if available)."
+          },
+          "503": {
+            "description": "Market data or broker research backend unavailable."
+          }
+        }
+      }
+    },
+    "/fetch-data": {
+      "post": {
+        "operationId": "fetchOHLCResearch",
+        "summary": "Read historical OHLC candles without broker mutations",
+        "x-research-only": true,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "symbol"
+                ],
+                "properties": {
+                  "symbol": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 48
+                  },
+                  "timeframe": {
+                    "type": "string",
+                    "enum": [
+                      "M1",
+                      "M5",
+                      "M15",
+                      "M30",
+                      "H1",
+                      "H4",
+                      "D1"
+                    ],
+                    "default": "M5"
+                  },
+                  "num_bars": {
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 500,
+                    "default": 100
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Read-only historical OHLC observations with available context and trend metadata."
+          },
+          "503": {
+            "description": "Market data or broker research backend unavailable."
+          }
+        }
+      }
+    }
+  }
+}
